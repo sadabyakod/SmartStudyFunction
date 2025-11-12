@@ -1,7 +1,4 @@
-# Docs for the Azure Web Apps Deploy action: https://github.com/azure/functions-action
-# More GitHub Actions for Azure: https://github.com/Azure/actions
-
-name: Build and deploy dotnet core app to Azure Function App - studyai-ingestion-345
+name: Build and deploy .NET project to Azure Function App - studyai-ingestion-345
 
 on:
   push:
@@ -10,44 +7,51 @@ on:
   workflow_dispatch:
 
 env:
-  AZURE_FUNCTIONAPP_PACKAGE_PATH: '.' # set this to the path to your web app project, defaults to the repository root
-  DOTNET_VERSION: '8.0.x' # set this to the dotnet version to use
+  AZURE_FUNCTIONAPP_PACKAGE_PATH: '.' # Path to project root (update if your .csproj is in a subfolder)
+  DOTNET_VERSION: '8.0.x'
 
 jobs:
   build-and-deploy:
     runs-on: windows-latest
     permissions:
-      id-token: write #This is required for requesting the JWT
-      contents: read #This is required for actions/checkout
+      id-token: write   # Required for Azure OIDC login
+      contents: read    # Required to read repo code
 
     steps:
-      - name: 'Checkout GitHub Action'
+      # Checkout your GitHub repository
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup DotNet ${{ env.DOTNET_VERSION }} Environment
-        uses: actions/setup-dotnet@v1
+      # Setup .NET SDK
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
-      - name: 'Resolve Project Dependencies Using Dotnet'
-        shell: pwsh
-        run: |
-          pushd './${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}'
-          dotnet build --configuration Release --output ./output
-          popd
-      
-      - name: Login to Azure
+      # Restore NuGet dependencies
+      - name: Restore dependencies
+        run: dotnet restore "${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}"
+
+      # Build the project
+      - name: Build project
+        run: dotnet build "${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}" --configuration Release --no-restore
+
+      # Publish the project to a folder for deployment
+      - name: Publish project
+        run: dotnet publish "${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}" --configuration Release --output ./publish_output --no-build
+
+      # Login to Azure using OpenID Connect (Federated Credentials)
+      - name: Azure Login
         uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_52536EC2477D4CF2B9E3B9FE552C0037 }}
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_5CC827F7023F45C8907398490A0C45D4 }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_26FC5077ABF94CEBAD30BD70F0AE8965 }}
 
-      - name: 'Run Azure Functions Action'
-        uses: Azure/functions-action@v1
-        id: fa
+      # Deploy to Azure Function App
+      - name: Deploy to Azure Function App
+        uses: azure/functions-action@v1
         with:
           app-name: 'studyai-ingestion-345'
           slot-name: 'Production'
-          package: '${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}/output'
-          
+          package: './publish_output'
